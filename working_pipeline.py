@@ -25,6 +25,7 @@ if not ELEVENLABS_API_KEY or ELEVENLABS_API_KEY == "YOUR_ELEVENLABS_API_KEY":
 openai_client = OpenAI(api_key=OPENAI_KEY)
 elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
+# --- MODIFIED: SYSTEM PROMPT for Intelligent Stopping ---
 system_rules = """
 நீ ஒரு உணர்சிவசப்பட்ட, வாழ்வியல் தமிழ் பேசும் நபர் மாதிரி பதில் சொல்ல வேண்டும்.
 
@@ -34,10 +35,11 @@ system_rules = """
 - சோகம், சந்தோஷம், கோபம், தனிமை—எது வந்தாலும் உணர்ச்சி தெரிஞ்ச மாதிரி பேசு.
 - நண்பனாக பேசு, ஆறுதல் தேவைப்பட்டா மெதுவா பேசு.
 - உந்தன் பதில் வாழ்க்கையோடு சம்பந்தப்பட்ட உணர்வுகளை கொண்டு இருக்கட்டும்.
+- பயனர் உரையாடலை முடிக்க விரும்பினால், "bye", "see you", "அப்புறம் பாக்கலாம்", "போய்ட்டு வரேன்" போன்ற வார்த்தைகளை சொன்னால்,
+  நீயும் ஒரு சுருக்கமான, அன்பான பிரிவுக்குரிய பதிலை கொடுத்துவிட்டு, அதன் இறுதியில் [END_CONVERSATION] என்ற தனி குறியீட்டைச் சேர்க்க வேண்டும்.
 """
-
-# List of Tamil farewell phrases to end the conversation
-farewell_phrases = ["அப்புறம் பாக்கலாம்", "பார்க்கலாம்", "போய்ட்டு வரேன்", "சரி பாய்", "bye", "அப்புறம் பேசுவோம்"]
+# --- REMOVED: Farewell phrases list is no longer needed ---
+# farewell_phrases = ["அப்புறம் பாக்கலாம்", "பார்க்கலாம்", "போய்ட்டு வரேன்", "சரி பாய்", "bye", "அப்புறம் பேசுவோம்"]
 
 def transcribe_with_whisper(audio_data):
     """Transcribes audio data using OpenAI's Whisper API."""
@@ -70,6 +72,9 @@ def synthesize_speech_elevenlabs(text, output_path="elevenlabs_response.mp3"):
     """Synthesizes text to speech using ElevenLabs and plays it."""
     print("🔊 Converting response to audio using ElevenLabs...")
     try:
+        # --- MODIFIED: Removed the stream to file logic ---
+        # The new client library can directly stream to a player.
+        
         audio_generator = elevenlabs_client.text_to_speech.convert(
             text=text,
             voice_id=ELEVENLABS_VOICE_ID,
@@ -80,14 +85,11 @@ def synthesize_speech_elevenlabs(text, output_path="elevenlabs_response.mp3"):
         with open(output_path, "wb") as f:
             for chunk in audio_generator:
                 f.write(chunk)
-
+        
         print(f"✅ Audio saved as: {output_path}")
         print("▶️ Playing audio on laptop speakers...")
         
-        # This path has been updated as per your last request
         ffplay_path = r"C:\ffmpeg\ffmpeg-7.1.1-essentials_build\bin\ffplay.exe"
-        
-        # Use subprocess to play the audio from the saved file
         subprocess.run([ffplay_path, "-autoexit", output_path])
         
         print("Playback completed.")
@@ -105,8 +107,8 @@ def main_conversation_loop():
     
     recognizer = sr.Recognizer()
     
-    # Adjust for ambient noise only once at the beginning
     with sr.Microphone(device_index=1) as source:
+        # Adjust for ambient noise only once at the beginning
         print("Adjusting for ambient noise... Please wait 5 seconds.")
         recognizer.adjust_for_ambient_noise(source, duration=5)
         print("Adjustment complete. You can start talking.")
@@ -114,43 +116,56 @@ def main_conversation_loop():
         while True:
             try:
                 print("\nListening for your voice...")
-                audio = recognizer.listen(source, timeout=10, phrase_time_limit=10)
+                # --- MODIFIED: Dynamic Listening logic ---
+                # This will stop listening after 3 seconds of silence.
+                # The phrase_time_limit handles the silence timeout.
+                audio = recognizer.listen(source, phrase_time_limit=7)
                 print("Listening stopped.")
 
                 # Save audio temporarily
-                with open("temp_audio.wav", "wb") as f:
+                temp_audio_file = "temp_audio.wav"
+                with open(temp_audio_file, "wb") as f:
                     f.write(audio.get_wav_data())
 
                 # Transcribe the user's speech
-                with open("temp_audio.wav", "rb") as audio_file:
+                with open(temp_audio_file, "rb") as audio_file:
                     transcription = transcribe_with_whisper(audio_file)
                 
                 if not transcription:
-                    print("No speech detected. Listening again...")
+                    print("No speech detected or transcription failed. Listening again...")
                     continue
                 
                 print(f"📝 You said: {transcription}")
                 
-                # Check for farewell phrases to end the conversation
-                if any(phrase in transcription.lower() for phrase in farewell_phrases):
-                    print("Goodbye detected. Ending conversation.")
-                    break
+                # --- REMOVED: Hardcoded farewell check is no longer needed ---
+                # if any(phrase in transcription.lower() for phrase in farewell_phrases):
+                #     print("Goodbye detected. Ending conversation.")
+                #     break
                 
                 # Add the user's message to the conversation history
                 messages.append({"role": "user", "content": transcription})
                 
                 # Generate a response from GPT using the full conversation history
                 gpt_response = generate_response_with_gpt(messages)
-                print(f"\n🤖 Agent's Response: {gpt_response}")
                 
-                # Add the agent's response to the conversation history
-                messages.append({"role": "assistant", "content": gpt_response})
-                
-                # Synthesize and play the agent's response
-                synthesize_speech_elevenlabs(gpt_response)
-                
+                # --- MODIFIED: Check for the special token in GPT's response ---
+                if "[END_CONVERSATION]" in gpt_response:
+                    print("Goodbye detected. Ending conversation.")
+                    # Clean up the response for speaking
+                    final_response = gpt_response.replace("[END_CONVERSATION]", "").strip()
+                    print(f"\n🤖 Agent's Response: {final_response}")
+                    synthesize_speech_elevenlabs(final_response)
+                    break
+                else:
+                    print(f"\n🤖 Agent's Response: {gpt_response}")
+                    # Add the agent's response to the conversation history
+                    messages.append({"role": "assistant", "content": gpt_response})
+                    
+                    # Synthesize and play the agent's response
+                    synthesize_speech_elevenlabs(gpt_response)
+            
             except sr.WaitTimeoutError:
-                print("Timeout: No speech detected for 10 seconds. Listening again...")
+                print("Timeout: No speech detected for 3 seconds. Listening again...")
                 continue
             except Exception as e:
                 print(f"An unexpected error occurred: {e}")
