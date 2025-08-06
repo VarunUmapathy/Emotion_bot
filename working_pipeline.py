@@ -5,51 +5,68 @@ from datetime import datetime
 from elevenlabs.client import ElevenLabs
 import subprocess
 import time
+import firebase_admin
+from firebase_admin import credentials, firestore
+import threading
 
-# API Keys (use environment variables for security)
-# IMPORTANT: Replace with your actual API keys
+from dotenv import load_dotenv
+load_dotenv()
+
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY")
-ELEVENLABS_API_KEY = "sk_1b290621776c4f8722821defc4fcafb0187422a93a4a522d"
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "YOUR_ELEVENLABS_API_KEY")
 
 WHISPER_MODEL = "whisper-1"
 GPT_MODEL = "gpt-4o"
 ELEVENLABS_VOICE_ID = "C2RGMrNBTZaNfddRPeRH"
 ELEVENLABS_MODEL_ID = "eleven_multilingual_v2"
+SERVICE_ACCOUNT_KEY_FILE = "serviceAccountKey.json"
 
-# Ensure API keys are set before proceeding
 if not OPENAI_KEY or OPENAI_KEY == "YOUR_OPENAI_API_KEY":
     raise ValueError("OPENAI_API_KEY environment variable not set or is a placeholder.")
 if not ELEVENLABS_API_KEY or ELEVENLABS_API_KEY == "YOUR_ELEVENLABS_API_KEY":
     raise ValueError("ELEVENLABS_API_KEY environment variable not set or is a placeholder.")
 
+try:
+    cred = credentials.Certificate(SERVICE_ACCOUNT_KEY_FILE)
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+    print("✅ Firebase initialized successfully.")
+except Exception as e:
+    print(f"Error initializing Firebase: {e}")
+    db = None
+
 openai_client = OpenAI(api_key=OPENAI_KEY)
 elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
-# --- MODIFIED: SYSTEM PROMPT for Intelligent Stopping ---
 system_rules = """
-நீ ஒரு உணர்சிவசப்பட்ட, வாழ்வியல் தமிழ் பேசும் நபர் மாதிரி பதில் சொல்ல வேண்டும்.
+You are a conversational agent speaking in Tamil. Your persona is a friend who is emotionally aware and gives life advice.
 
-விதிகள்:
-- பதில் 1–2 வரிகளில் மட்டும்.
-- இலக்கிய தமிழ் வேண்டாம்; சிம்பிளா பேசு.
-- சோகம், சந்தோஷம், கோபம், தனிமை—எது வந்தாலும் உணர்ச்சி தெரிஞ்ச மாதிரி பேசு.
-- நண்பனாக பேசு, ஆறுதல் தேவைப்பட்டா மெதுவா பேசு.
-- உந்தன் பதில் வாழ்க்கையோடு சம்பந்தப்பட்ட உணர்வுகளை கொண்டு இருக்கட்டும்.
-- பயனர் உரையாடலை முடிக்க விரும்பினால், "bye", "see you", "அப்புறம் பாக்கலாம்", "போய்ட்டு வரேன்" போன்ற வார்த்தைகளை சொன்னால்,
-  நீயும் ஒரு சுருக்கமான, அன்பான பிரிவுக்குரிய பதிலை கொடுத்துவிட்டு, அதன் இறுதியில் [END_CONVERSATION] என்ற தனி குறியீட்டைச் சேர்க்க வேண்டும்.
+You are equipped with a long-term memory system. I will provide you with relevant information from the user's past conversations under the tag <memories>. Use this information to create a more personalized and coherent response.
+If there are no memories, just respond normally.
+
+Here are the rules for your responses:
+- Respond in 1-2 sentences.
+- Speak in simple, conversational Tamil, not literary Tamil.
+- Respond with emotions like sadness, happiness, anger, loneliness, etc., as appropriate.
+- Be a good friend and offer gentle comfort when needed.
+- Your answers should relate to real-life feelings and situations.
+- If the user wants to end the conversation by saying words like "bye," "see you," "அப்புறம் பாக்கலாம்," or "போய்ட்டு வரேன்," you should give a brief, kind farewell and then end your response with the special token [END_CONVERSATION].
 """
-# --- REMOVED: Farewell phrases list is no longer needed ---
-# farewell_phrases = ["அப்புறம் பாக்கலாம்", "பார்க்கலாம்", "போய்ட்டு வரேன்", "சரி பாய்", "bye", "அப்புறம் பேசுவோம்"]
 
 def transcribe_with_whisper(audio_data):
     """Transcribes audio data using OpenAI's Whisper API."""
     try:
-        response = openai_client.audio.transcriptions.create(
-            model=WHISPER_MODEL,
-            file=audio_data,
-            language="ta",
-            response_format="text"
-        )
+        temp_audio_file = "temp_audio.wav"
+        with open(temp_audio_file, "wb") as f:
+            f.write(audio_data.get_wav_data())
+
+        with open(temp_audio_file, "rb") as audio_file:
+            response = openai_client.audio.transcriptions.create(
+                model=WHISPER_MODEL,
+                file=audio_file,
+                language="ta",
+                response_format="text"
+            )
         return response.strip()
     except Exception as e:
         print(f"Error during Whisper transcription: {e}")
@@ -72,9 +89,6 @@ def synthesize_speech_elevenlabs(text, output_path="elevenlabs_response.mp3"):
     """Synthesizes text to speech using ElevenLabs and plays it."""
     print("🔊 Converting response to audio using ElevenLabs...")
     try:
-        # --- MODIFIED: Removed the stream to file logic ---
-        # The new client library can directly stream to a player.
-        
         audio_generator = elevenlabs_client.text_to_speech.convert(
             text=text,
             voice_id=ELEVENLABS_VOICE_ID,
@@ -98,17 +112,84 @@ def synthesize_speech_elevenlabs(text, output_path="elevenlabs_response.mp3"):
         print(f"Error during ElevenLabs TTS synthesis or playback: {e}")
         return None
 
+# --- MODIFIED: Refined the prompt for better extraction and filtering ---
+def extract_and_store_memories(latest_message, db):
+    if not db:
+        return
+    
+    extraction_prompt = f"""
+    You are a memory extraction bot. Your job is to extract key facts, personal details, and stories from the following user message. Respond with a simple list of facts.
+
+    If the user message does not contain any personal facts, details, or stories, respond with the exact phrase "NO_FACTS".
+
+    Example 1:
+    User message: "என் பெயர் ராதா. நான் நேற்று தான் வேலை தேடுறதுக்கு ஒரு கம்பெனிக்கு போயிருந்தேன்."
+    Extraction:
+    - User's name is ராதா.
+    - User was looking for a job yesterday.
+    
+    Example 2:
+    User message: "இன்று நான் கால்பந்து விளையாடினேன்."
+    Extraction:
+    - User played football today.
+    
+    Example 3:
+    User message: "காலையில் சாப்பிட்டேன்."
+    Extraction:
+    NO_FACTS
+    
+    User message: "{latest_message}"
+    Extraction:
+    """
+    
+    try:
+        extraction_response = openai_client.chat.completions.create(
+            model=GPT_MODEL,
+            messages=[{"role": "user", "content": extraction_prompt}],
+            temperature=0.3,
+        )
+        extracted_memories = extraction_response.choices[0].message.content.strip()
+        
+        # --- NEW: Filter out non-essential responses ---
+        if extracted_memories and extracted_memories != "NO_FACTS":
+            memories_ref = db.collection('memories')
+            memories_ref.add({
+                'timestamp': datetime.now(),
+                'fact': extracted_memories
+            })
+            print(f"✅ Stored new memory snippets.")
+        else:
+            print("➡️ No new facts to store.")
+    except Exception as e:
+        print(f"Error extracting or storing memories in background: {e}")
+
+def retrieve_memories(db):
+    if not db:
+        return ""
+    
+    try:
+        memories_ref = db.collection('memories')
+        memories_docs = memories_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(5).get()
+        
+        memories_string = ""
+        if memories_docs:
+            for doc in memories_docs:
+                memories_string += "- " + doc.to_dict()['fact'] + "\n"
+        
+        return memories_string
+    except Exception as e:
+        print(f"Error retrieving memories: {e}")
+        return ""
+
 def main_conversation_loop():
     """Main function to run the conversational agent."""
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting conversational agent...\n")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting conversational agent with long-term memory...\n")
     
-    # Initialize the conversation with the system rules. This list is the "memory".
-    messages = [{"role": "system", "content": system_rules}]
+    short_term_history = []
     
     recognizer = sr.Recognizer()
     
     with sr.Microphone(device_index=1) as source:
-        # Adjust for ambient noise only once at the beginning
         print("Adjusting for ambient noise... Please wait 5 seconds.")
         recognizer.adjust_for_ambient_noise(source, duration=5)
         print("Adjustment complete. You can start talking.")
@@ -116,20 +197,10 @@ def main_conversation_loop():
         while True:
             try:
                 print("\nListening for your voice...")
-                # --- MODIFIED: Dynamic Listening logic ---
-                # This will stop listening after 3 seconds of silence.
-                # The phrase_time_limit handles the silence timeout.
-                audio = recognizer.listen(source, phrase_time_limit=7)
+                audio = recognizer.listen(source, phrase_time_limit=10, timeout=3)
                 print("Listening stopped.")
 
-                # Save audio temporarily
-                temp_audio_file = "temp_audio.wav"
-                with open(temp_audio_file, "wb") as f:
-                    f.write(audio.get_wav_data())
-
-                # Transcribe the user's speech
-                with open(temp_audio_file, "rb") as audio_file:
-                    transcription = transcribe_with_whisper(audio_file)
+                transcription = transcribe_with_whisper(audio)
                 
                 if not transcription:
                     print("No speech detected or transcription failed. Listening again...")
@@ -137,31 +208,39 @@ def main_conversation_loop():
                 
                 print(f"📝 You said: {transcription}")
                 
-                # --- REMOVED: Hardcoded farewell check is no longer needed ---
-                # if any(phrase in transcription.lower() for phrase in farewell_phrases):
-                #     print("Goodbye detected. Ending conversation.")
-                #     break
+                api_messages = [{"role": "system", "content": system_rules}]
                 
-                # Add the user's message to the conversation history
-                messages.append({"role": "user", "content": transcription})
+                user_memories = retrieve_memories(db)
+                if user_memories:
+                    print(f"🧠 Retrieved memories:\n{user_memories}")
+                    api_messages.append({"role": "system", "content": f"<memories>\n{user_memories}\n</memories>"})
                 
-                # Generate a response from GPT using the full conversation history
-                gpt_response = generate_response_with_gpt(messages)
+                api_messages.extend(short_term_history)
                 
-                # --- MODIFIED: Check for the special token in GPT's response ---
+                api_messages.append({"role": "user", "content": transcription})
+                
+                gpt_response = generate_response_with_gpt(api_messages)
+                
+                # --- NEW: Start a separate thread for database writes ---
+                if db:
+                    memory_thread = threading.Thread(target=extract_and_store_memories, args=(transcription, db))
+                    memory_thread.start()
+
                 if "[END_CONVERSATION]" in gpt_response:
                     print("Goodbye detected. Ending conversation.")
-                    # Clean up the response for speaking
                     final_response = gpt_response.replace("[END_CONVERSATION]", "").strip()
                     print(f"\n🤖 Agent's Response: {final_response}")
                     synthesize_speech_elevenlabs(final_response)
                     break
                 else:
                     print(f"\n🤖 Agent's Response: {gpt_response}")
-                    # Add the agent's response to the conversation history
-                    messages.append({"role": "assistant", "content": gpt_response})
                     
-                    # Synthesize and play the agent's response
+                    short_term_history.append({"role": "user", "content": transcription})
+                    short_term_history.append({"role": "assistant", "content": gpt_response})
+                    
+                    if len(short_term_history) > 4:
+                        short_term_history = short_term_history[-4:]
+                        
                     synthesize_speech_elevenlabs(gpt_response)
             
             except sr.WaitTimeoutError:
@@ -169,7 +248,7 @@ def main_conversation_loop():
                 continue
             except Exception as e:
                 print(f"An unexpected error occurred: {e}")
-                time.sleep(1) # Wait a bit before retrying
+                time.sleep(1)
 
 if __name__ == "__main__":
     print("\n--- Listing available voices in your ElevenLabs account ---")

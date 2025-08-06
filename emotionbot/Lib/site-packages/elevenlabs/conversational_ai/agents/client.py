@@ -49,7 +49,6 @@ class AgentsClient:
         *,
         conversation_config: ConversationalConfig,
         platform_settings: typing.Optional[AgentPlatformSettingsRequestModel] = OMIT,
-        workflow: typing.Optional[typing.Optional[typing.Any]] = OMIT,
         name: typing.Optional[str] = OMIT,
         tags: typing.Optional[typing.Sequence[str]] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
@@ -64,8 +63,6 @@ class AgentsClient:
 
         platform_settings : typing.Optional[AgentPlatformSettingsRequestModel]
             Platform settings for the agent are all settings that aren't related to the conversation orchestration and content.
-
-        workflow : typing.Optional[typing.Optional[typing.Any]]
 
         name : typing.Optional[str]
             A name to make the agent easier to find
@@ -95,7 +92,6 @@ class AgentsClient:
         _response = self._raw_client.create(
             conversation_config=conversation_config,
             platform_settings=platform_settings,
-            workflow=workflow,
             name=name,
             tags=tags,
             request_options=request_options,
@@ -169,7 +165,6 @@ class AgentsClient:
         *,
         conversation_config: typing.Optional[ConversationalConfig] = OMIT,
         platform_settings: typing.Optional[AgentPlatformSettingsRequestModel] = OMIT,
-        workflow: typing.Optional[typing.Optional[typing.Any]] = OMIT,
         name: typing.Optional[str] = OMIT,
         tags: typing.Optional[typing.Sequence[str]] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
@@ -187,8 +182,6 @@ class AgentsClient:
 
         platform_settings : typing.Optional[AgentPlatformSettingsRequestModel]
             Platform settings for the agent are all settings that aren't related to the conversation orchestration and content.
-
-        workflow : typing.Optional[typing.Optional[typing.Any]]
 
         name : typing.Optional[str]
             A name to make the agent easier to find
@@ -219,7 +212,6 @@ class AgentsClient:
             agent_id,
             conversation_config=conversation_config,
             platform_settings=platform_settings,
-            workflow=workflow,
             name=name,
             tags=tags,
             request_options=request_options,
@@ -316,6 +308,7 @@ class AgentsClient:
         *,
         simulation_specification: ConversationSimulationSpecification,
         extra_evaluation_criteria: typing.Optional[typing.Sequence[PromptEvaluationCriteria]] = OMIT,
+        new_turns_limit: typing.Optional[int] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> AgentSimulatedChatTestResponseModel:
         """
@@ -332,6 +325,9 @@ class AgentsClient:
         extra_evaluation_criteria : typing.Optional[typing.Sequence[PromptEvaluationCriteria]]
             A list of evaluation criteria to test
 
+        new_turns_limit : typing.Optional[int]
+            Maximum number of new turns to generate in the conversation simulation
+
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
 
@@ -342,7 +338,11 @@ class AgentsClient:
 
         Examples
         --------
-        from elevenlabs import ConversationSimulationSpecification, ElevenLabs
+        from elevenlabs import (
+            AgentConfig,
+            ConversationSimulationSpecification,
+            ElevenLabs,
+        )
 
         client = ElevenLabs(
             api_key="YOUR_API_KEY",
@@ -350,10 +350,10 @@ class AgentsClient:
         client.conversational_ai.agents.simulate_conversation(
             agent_id="21m00Tcm4TlvDq8ikWAM",
             simulation_specification=ConversationSimulationSpecification(
-                simulated_user_config={
-                    "first_message": "Hello, how can I help you today?",
-                    "language": "en",
-                },
+                simulated_user_config=AgentConfig(
+                    first_message="Hello, how can I help you today?",
+                    language="en",
+                ),
             ),
         )
         """
@@ -361,6 +361,7 @@ class AgentsClient:
             agent_id,
             simulation_specification=simulation_specification,
             extra_evaluation_criteria=extra_evaluation_criteria,
+            new_turns_limit=new_turns_limit,
             request_options=request_options,
         )
         return _response.data
@@ -371,6 +372,7 @@ class AgentsClient:
         *,
         simulation_specification: ConversationSimulationSpecification,
         extra_evaluation_criteria: typing.Optional[typing.Sequence[PromptEvaluationCriteria]] = OMIT,
+        new_turns_limit: typing.Optional[int] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> None:
         """
@@ -387,6 +389,9 @@ class AgentsClient:
         extra_evaluation_criteria : typing.Optional[typing.Sequence[PromptEvaluationCriteria]]
             A list of evaluation criteria to test
 
+        new_turns_limit : typing.Optional[int]
+            Maximum number of new turns to generate in the conversation simulation
+
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
 
@@ -396,7 +401,11 @@ class AgentsClient:
 
         Examples
         --------
-        from elevenlabs import ConversationSimulationSpecification, ElevenLabs
+        from elevenlabs import (
+            AgentConfig,
+            ConversationSimulationSpecification,
+            ElevenLabs,
+        )
 
         client = ElevenLabs(
             api_key="YOUR_API_KEY",
@@ -404,10 +413,10 @@ class AgentsClient:
         client.conversational_ai.agents.simulate_conversation_stream(
             agent_id="21m00Tcm4TlvDq8ikWAM",
             simulation_specification=ConversationSimulationSpecification(
-                simulated_user_config={
-                    "first_message": "Hello, how can I help you today?",
-                    "language": "en",
-                },
+                simulated_user_config=AgentConfig(
+                    first_message="Hello, how can I help you today?",
+                    language="en",
+                ),
             ),
         )
         """
@@ -415,6 +424,7 @@ class AgentsClient:
             agent_id,
             simulation_specification=simulation_specification,
             extra_evaluation_criteria=extra_evaluation_criteria,
+            new_turns_limit=new_turns_limit,
             request_options=request_options,
         )
         return _response.data
@@ -447,7 +457,6 @@ class AsyncAgentsClient:
         *,
         conversation_config: ConversationalConfig,
         platform_settings: typing.Optional[AgentPlatformSettingsRequestModel] = OMIT,
-        workflow: typing.Optional[typing.Optional[typing.Any]] = OMIT,
         name: typing.Optional[str] = OMIT,
         tags: typing.Optional[typing.Sequence[str]] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
@@ -462,8 +471,6 @@ class AsyncAgentsClient:
 
         platform_settings : typing.Optional[AgentPlatformSettingsRequestModel]
             Platform settings for the agent are all settings that aren't related to the conversation orchestration and content.
-
-        workflow : typing.Optional[typing.Optional[typing.Any]]
 
         name : typing.Optional[str]
             A name to make the agent easier to find
@@ -501,7 +508,6 @@ class AsyncAgentsClient:
         _response = await self._raw_client.create(
             conversation_config=conversation_config,
             platform_settings=platform_settings,
-            workflow=workflow,
             name=name,
             tags=tags,
             request_options=request_options,
@@ -593,7 +599,6 @@ class AsyncAgentsClient:
         *,
         conversation_config: typing.Optional[ConversationalConfig] = OMIT,
         platform_settings: typing.Optional[AgentPlatformSettingsRequestModel] = OMIT,
-        workflow: typing.Optional[typing.Optional[typing.Any]] = OMIT,
         name: typing.Optional[str] = OMIT,
         tags: typing.Optional[typing.Sequence[str]] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
@@ -611,8 +616,6 @@ class AsyncAgentsClient:
 
         platform_settings : typing.Optional[AgentPlatformSettingsRequestModel]
             Platform settings for the agent are all settings that aren't related to the conversation orchestration and content.
-
-        workflow : typing.Optional[typing.Optional[typing.Any]]
 
         name : typing.Optional[str]
             A name to make the agent easier to find
@@ -651,7 +654,6 @@ class AsyncAgentsClient:
             agent_id,
             conversation_config=conversation_config,
             platform_settings=platform_settings,
-            workflow=workflow,
             name=name,
             tags=tags,
             request_options=request_options,
@@ -764,6 +766,7 @@ class AsyncAgentsClient:
         *,
         simulation_specification: ConversationSimulationSpecification,
         extra_evaluation_criteria: typing.Optional[typing.Sequence[PromptEvaluationCriteria]] = OMIT,
+        new_turns_limit: typing.Optional[int] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> AgentSimulatedChatTestResponseModel:
         """
@@ -780,6 +783,9 @@ class AsyncAgentsClient:
         extra_evaluation_criteria : typing.Optional[typing.Sequence[PromptEvaluationCriteria]]
             A list of evaluation criteria to test
 
+        new_turns_limit : typing.Optional[int]
+            Maximum number of new turns to generate in the conversation simulation
+
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
 
@@ -792,7 +798,11 @@ class AsyncAgentsClient:
         --------
         import asyncio
 
-        from elevenlabs import AsyncElevenLabs, ConversationSimulationSpecification
+        from elevenlabs import (
+            AgentConfig,
+            AsyncElevenLabs,
+            ConversationSimulationSpecification,
+        )
 
         client = AsyncElevenLabs(
             api_key="YOUR_API_KEY",
@@ -803,10 +813,10 @@ class AsyncAgentsClient:
             await client.conversational_ai.agents.simulate_conversation(
                 agent_id="21m00Tcm4TlvDq8ikWAM",
                 simulation_specification=ConversationSimulationSpecification(
-                    simulated_user_config={
-                        "first_message": "Hello, how can I help you today?",
-                        "language": "en",
-                    },
+                    simulated_user_config=AgentConfig(
+                        first_message="Hello, how can I help you today?",
+                        language="en",
+                    ),
                 ),
             )
 
@@ -817,6 +827,7 @@ class AsyncAgentsClient:
             agent_id,
             simulation_specification=simulation_specification,
             extra_evaluation_criteria=extra_evaluation_criteria,
+            new_turns_limit=new_turns_limit,
             request_options=request_options,
         )
         return _response.data
@@ -827,6 +838,7 @@ class AsyncAgentsClient:
         *,
         simulation_specification: ConversationSimulationSpecification,
         extra_evaluation_criteria: typing.Optional[typing.Sequence[PromptEvaluationCriteria]] = OMIT,
+        new_turns_limit: typing.Optional[int] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> None:
         """
@@ -843,6 +855,9 @@ class AsyncAgentsClient:
         extra_evaluation_criteria : typing.Optional[typing.Sequence[PromptEvaluationCriteria]]
             A list of evaluation criteria to test
 
+        new_turns_limit : typing.Optional[int]
+            Maximum number of new turns to generate in the conversation simulation
+
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
 
@@ -854,7 +869,11 @@ class AsyncAgentsClient:
         --------
         import asyncio
 
-        from elevenlabs import AsyncElevenLabs, ConversationSimulationSpecification
+        from elevenlabs import (
+            AgentConfig,
+            AsyncElevenLabs,
+            ConversationSimulationSpecification,
+        )
 
         client = AsyncElevenLabs(
             api_key="YOUR_API_KEY",
@@ -865,10 +884,10 @@ class AsyncAgentsClient:
             await client.conversational_ai.agents.simulate_conversation_stream(
                 agent_id="21m00Tcm4TlvDq8ikWAM",
                 simulation_specification=ConversationSimulationSpecification(
-                    simulated_user_config={
-                        "first_message": "Hello, how can I help you today?",
-                        "language": "en",
-                    },
+                    simulated_user_config=AgentConfig(
+                        first_message="Hello, how can I help you today?",
+                        language="en",
+                    ),
                 ),
             )
 
@@ -879,6 +898,7 @@ class AsyncAgentsClient:
             agent_id,
             simulation_specification=simulation_specification,
             extra_evaluation_criteria=extra_evaluation_criteria,
+            new_turns_limit=new_turns_limit,
             request_options=request_options,
         )
         return _response.data
