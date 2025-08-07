@@ -13,6 +13,9 @@ import re
 from dotenv import load_dotenv
 load_dotenv()
 
+# --- Global Status Variable ---
+current_status = "Idle"
+
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "YOUR_ELEVENLABS_API_KEY")
 WAKE_WORD = os.environ.get("WAKE_WORD", "hello nila")
@@ -47,7 +50,7 @@ You are equipped with a long-term memory system. I will provide you with relevan
 If there are no memories, just respond normally.
 
 Here are the rules for your responses:
-- **Your responses must be in simple, everyday, and conversational Tamil.** Avoid complex, formal, or literary vocabulary.
+- Your responses must be in simple, everyday, and conversational Tamil. Avoid complex, formal, or literary vocabulary.
 - Respond in 1-3 sentences.
 - Respond with emotions like sadness, happiness, anger, loneliness, etc., as appropriate.
 - Be a good friend and offer gentle comfort when needed.
@@ -55,6 +58,12 @@ Here are the rules for your responses:
 - If the user wants to end the conversation by saying words like "bye," "see you," "அப்புறம் பாக்கலாம்," or "போய்ட்டு வரேன்," you should give a brief, kind farewell and then end your response with the special token [END_CONVERSATION].
 - Try to use the user's name where appropriate, but if you don't know it, just use "நண்பா" (friend).
 """
+
+def set_status(status_text):
+    """Function to update the global status."""
+    global current_status
+    current_status = status_text
+    print(f"Status updated: {status_text}")
 
 def transcribe_with_whisper(audio_data):
     """Transcribes audio data using OpenAI's Whisper API."""
@@ -77,6 +86,7 @@ def transcribe_with_whisper(audio_data):
 
 def generate_response_with_gpt(messages_list):
     """Generates a conversational response using GPT-4o with a full message history."""
+    set_status("Nila is processing...")
     print("🧠 Generating response with GPT-4o...")
     try:
         chat_response = openai_client.chat.completions.create(
@@ -91,6 +101,7 @@ def generate_response_with_gpt(messages_list):
 
 def synthesize_speech_elevenlabs(text, output_path="elevenlabs_response.mp3"):
     """Synthesizes text to speech using ElevenLabs and plays it."""
+    set_status("Nila is speaking...")
     print("🔊 Converting response to audio using ElevenLabs...")
     try:
         audio_generator = elevenlabs_client.text_to_speech.convert(
@@ -111,6 +122,8 @@ def synthesize_speech_elevenlabs(text, output_path="elevenlabs_response.mp3"):
     except Exception as e:
         print(f"Error during ElevenLabs TTS synthesis or playback: {e}")
         return None
+    finally:
+        set_status("User can speak...")
 
 def extract_and_store_memories(latest_message, db):
     if not db:
@@ -163,11 +176,13 @@ def start_conversation(recognizer, source):
         {"role": "system", "content": system_rules},
         {"role": "user", "content": "hello nila"}
     ])
+    
     print(f"\n🤖 Agent's Response: {initial_gpt_response}")
     synthesize_speech_elevenlabs(initial_gpt_response)
     
     while True:
         try:
+            set_status("User can speak...")
             print("\nListening for your voice...")
             audio = recognizer.listen(source, phrase_time_limit=10, timeout=5)
             print("Listening stopped.")
@@ -219,6 +234,7 @@ def start_conversation(recognizer, source):
 
 def wake_word_detection_loop(stop_event):
     """Main loop to listen for the wake word before starting a conversation."""
+    global current_status
     recognizer = sr.Recognizer()
     MIC_INDEX = 3
     
@@ -227,14 +243,18 @@ def wake_word_detection_loop(stop_event):
     WAKE_WORD_STARTS_WITH = "hello"
 
     try:
+        set_status("Initializing microphone...")
         print(f"✅ Attempting to initialize microphone with index {MIC_INDEX}...")
         with sr.Microphone(device_index=MIC_INDEX) as source:
+            set_status("Adjusting for ambient noise...")
             print(f"✅ Microphone initialized successfully. Adjusting for ambient noise...")
             recognizer.adjust_for_ambient_noise(source, duration=2)
+            set_status(f"Dormant, listening for '{WAKE_WORD}'...")
             print(f"Adjustment complete. Agent is dormant, listening for '{WAKE_WORD}'.")
             
             while not stop_event.is_set():
                 try:
+                    set_status(f"Dormant, listening for '{WAKE_WORD}'...")
                     print(f"\nWaiting for '{WAKE_WORD}'... (listening for up to 3 seconds)")
                     audio = recognizer.listen(source, phrase_time_limit=3)
                     print("➡️ Audio captured. Sending to Whisper...")
@@ -250,7 +270,6 @@ def wake_word_detection_loop(stop_event):
                         is_wake_word_detected = True
                         print("✅ Wake word detected by 'starts with' check.")
                     
-                    # --- NEW LINE ADDED HERE ---
                     elif WAKE_WORD_TAMIL_1 in transcription or WAKE_WORD_TAMIL_2 in transcription:
                         is_wake_word_detected = True
                         print("✅ Wake word detected by 'contains Tamil word' check.")
@@ -270,9 +289,11 @@ def wake_word_detection_loop(stop_event):
                     print(f"❌ An error occurred during transcription: {e}")
                     time.sleep(1)
 
+        set_status("Idle")
         print("🚫 Bot thread stopped gracefully.")
 
     except Exception as e:
+        set_status("Error")
         print(f"❌ FATAL ERROR: Microphone setup failed. Error: {e}")
         stop_event.set()
 

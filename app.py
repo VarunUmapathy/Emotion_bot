@@ -35,6 +35,7 @@ def start_bot():
     stop_event.clear() # Clear the stop event to allow the bot to start
     bot_thread = threading.Thread(target=working_pipeline.wake_word_detection_loop, args=(stop_event,))
     bot_thread.start()
+    working_pipeline.set_status("Bot started")
     return jsonify({"status": "Bot started"})
 
 @app.route('/stop_bot', methods=['POST'])
@@ -45,10 +46,16 @@ def stop_bot():
         print("Stopping conversational agent...")
         stop_event.set() # Set the event to signal the thread to stop
         bot_thread.join(timeout=10) # Wait for the thread to finish gracefully
+        working_pipeline.set_status("Idle")
         return jsonify({"status": "Bot stopping"})
+    working_pipeline.set_status("Idle")
     return jsonify({"status": "Bot is not running"})
+
+@app.route('/get_status')
+def get_status():
+    """Returns the current status of the bot."""
+    return jsonify({"status": working_pipeline.current_status})
 
 
 if __name__ == '__main__':
-    # You can set debug=False for production, but it's good for development.
     app.run(debug=True, host='0.0.0.0', port=5000)
