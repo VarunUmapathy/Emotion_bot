@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Emotion Bot Interface</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        button { font-size: 1.2em; padding: 10px 20px; margin: 10px; cursor: pointer; }
+        #status { font-size: 1.5em; margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Emotion Bot</h1>
+    <p>Use the buttons below to control the bot.</p>
+    <button id="startBtn">Start Listening</button>
+    <button id="stopBtn">Stop Listening</button>
+    <div id="status">Status: Idle</div>
+
+    <script>
+        const statusElement = document.getElementById('status');
+        
+        document.getElementById('startBtn').addEventListener('click', () => {
+            fetch('/start_bot', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    statusElement.textContent = `Status: ${data.status}`;
+                })
+                .catch(error => console.error('Error:', error));
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            fetch('/stop_bot', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    statusElement.textContent = `Status: ${data.status}`;
+                })
+                .catch(error => console.error('Error:', error));
+        });
+    </script>
+</body>
+</html>```

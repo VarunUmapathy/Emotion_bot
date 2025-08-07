@@ -13,10 +13,9 @@ import re
 from dotenv import load_dotenv
 load_dotenv()
 
-# --- API Keys and Configuration loaded from .env file ---
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "YOUR_ELEVENLABS_API_KEY")
-WAKE_WORD = os.environ.get("WAKE_WORD", "hello nila") # Used for display purposes only
+WAKE_WORD = os.environ.get("WAKE_WORD", "hello nila")
 
 WHISPER_MODEL = "whisper-1"
 GPT_MODEL = "gpt-4o"
@@ -29,7 +28,6 @@ if not OPENAI_KEY or OPENAI_KEY == "YOUR_OPENAI_API_KEY":
 if not ELEVENLABS_API_KEY or ELEVENLABS_API_KEY == "YOUR_ELEVENLABS_API_KEY":
     raise ValueError("ELEVENLABS_API_KEY environment variable not set or is a placeholder.")
 
-# --- Firebase Initialization ---
 try:
     cred = credentials.Certificate(SERVICE_ACCOUNT_KEY_FILE)
     firebase_admin.initialize_app(cred)
@@ -39,11 +37,9 @@ except Exception as e:
     print(f"Error initializing Firebase: {e}")
     db = None
 
-# --- API Clients ---
 openai_client = OpenAI(api_key=OPENAI_KEY)
 elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
-# --- System Rules for GPT ---
 system_rules = """
 You are a conversational agent speaking in Tamil. Your persona is a friend who is emotionally aware and gives life advice.
 
@@ -60,7 +56,6 @@ Here are the rules for your responses:
 - Try to use the user's name where appropriate, but if you don't know it, just use "நண்பா" (friend).
 """
 
-# --- Core Functions ---
 def transcribe_with_whisper(audio_data):
     """Transcribes audio data using OpenAI's Whisper API."""
     try:
@@ -117,7 +112,6 @@ def synthesize_speech_elevenlabs(text, output_path="elevenlabs_response.mp3"):
         print(f"Error during ElevenLabs TTS synthesis or playback: {e}")
         return None
 
-# --- Memory Functions ---
 def extract_and_store_memories(latest_message, db):
     if not db:
         return
@@ -167,7 +161,7 @@ def start_conversation(recognizer, source):
     
     initial_gpt_response = generate_response_with_gpt([
         {"role": "system", "content": system_rules},
-        {"role": "user", "content": "hello nila"} # Using a consistent wake word for the initial prompt
+        {"role": "user", "content": "hello nila"}
     ])
     print(f"\n🤖 Agent's Response: {initial_gpt_response}")
     synthesize_speech_elevenlabs(initial_gpt_response)
@@ -223,48 +217,67 @@ def start_conversation(recognizer, source):
             print(f"An unexpected error occurred: {e}")
             break
 
-def wake_word_detection_loop():
+def wake_word_detection_loop(stop_event):
     """Main loop to listen for the wake word before starting a conversation."""
     recognizer = sr.Recognizer()
-
     MIC_INDEX = 3
     
-    WAKE_WORD_TAMIL = "ஹலோ"
+    WAKE_WORD_TAMIL_1 = "ஹலோ"
+    WAKE_WORD_TAMIL_2 = "வணக்கம்"
     WAKE_WORD_STARTS_WITH = "hello"
 
-    with sr.Microphone(device_index=MIC_INDEX) as source:
-        print("Adjusting for ambient noise... Please wait 5 seconds.")
-        recognizer.adjust_for_ambient_noise(source, duration=5)
-        print(f"Adjustment complete. Agent is dormant, listening for '{WAKE_WORD}' on mic index {MIC_INDEX}.")
-        
-        while True:
-            try:
-                print(f"\nWaiting for '{WAKE_WORD}'...")
-                audio = recognizer.listen(source, phrase_time_limit=3)
-                transcription = transcribe_with_whisper(audio)
-                
-                transcription_lower = transcription.lower()
-                
-                # --- Flexible wake word check ---
-                is_wake_word_detected = False
-                
-                if transcription_lower.startswith(WAKE_WORD_STARTS_WITH) and len(transcription_lower.split()) > 1:
-                    is_wake_word_detected = True
-                
-                elif WAKE_WORD_TAMIL in transcription:
-                    is_wake_word_detected = True
+    try:
+        print(f"✅ Attempting to initialize microphone with index {MIC_INDEX}...")
+        with sr.Microphone(device_index=MIC_INDEX) as source:
+            print(f"✅ Microphone initialized successfully. Adjusting for ambient noise...")
+            recognizer.adjust_for_ambient_noise(source, duration=2)
+            print(f"Adjustment complete. Agent is dormant, listening for '{WAKE_WORD}'.")
+            
+            while not stop_event.is_set():
+                try:
+                    print(f"\nWaiting for '{WAKE_WORD}'... (listening for up to 3 seconds)")
+                    audio = recognizer.listen(source, phrase_time_limit=3)
+                    print("➡️ Audio captured. Sending to Whisper...")
+                    
+                    transcription = transcribe_with_whisper(audio)
+                    print(f"✅ Whisper transcribed: '{transcription}'")
+                    
+                    transcription_lower = transcription.lower()
+                    
+                    is_wake_word_detected = False
+                    
+                    if transcription_lower.startswith(WAKE_WORD_STARTS_WITH) and len(transcription_lower.split()) > 1:
+                        is_wake_word_detected = True
+                        print("✅ Wake word detected by 'starts with' check.")
+                    
+                    # --- NEW LINE ADDED HERE ---
+                    elif WAKE_WORD_TAMIL_1 in transcription or WAKE_WORD_TAMIL_2 in transcription:
+                        is_wake_word_detected = True
+                        print("✅ Wake word detected by 'contains Tamil word' check.")
+                    
+                    if is_wake_word_detected:
+                        print(f"Wake word detected! Starting conversation.")
+                        start_conversation(recognizer, source)
+                    else:
+                        print("❌ Wake word not detected. Listening again.")
+                    
+                except sr.WaitTimeoutError:
+                    if stop_event.is_set():
+                        break
+                    print("⏱️ No speech detected within timeout. Listening again.")
+                    continue
+                except Exception as e:
+                    print(f"❌ An error occurred during transcription: {e}")
+                    time.sleep(1)
 
-                if is_wake_word_detected:
-                    print(f"Wake word detected! Starting conversation.")
-                    start_conversation(recognizer, source)
+        print("🚫 Bot thread stopped gracefully.")
 
-            except sr.WaitTimeoutError:
-                continue
-            except Exception as e:
-                print(f"An unexpected error occurred during wake word detection: {e}")
-                time.sleep(1)
+    except Exception as e:
+        print(f"❌ FATAL ERROR: Microphone setup failed. Error: {e}")
+        stop_event.set()
 
 if __name__ == "__main__":
+    print("\n--- Running in standalone mode ---")
     print("\n--- Listing available voices in your ElevenLabs account ---")
     try:
         voices = elevenlabs_client.voices.get_all()
@@ -277,5 +290,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Could not list voices. Error: {e}")
 
-    wake_word_detection_loop()
+    dummy_stop_event = threading.Event()
+    wake_word_detection_loop(dummy_stop_event)
     print("Conversation ended. Thank you for using the agent!")
