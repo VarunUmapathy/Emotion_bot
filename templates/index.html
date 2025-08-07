@@ -2,40 +2,110 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Emotion Bot Interface</title>
+    <title>Nila - Your Voice Assistant</title>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-        button { font-size: 1.2em; padding: 10px 20px; margin: 10px; cursor: pointer; }
-        #status { font-size: 1.5em; margin-top: 20px; font-weight: bold; }
+        /*
+         * This is the fix. Flask processes the url_for and sets a CSS variable,
+         * which the background-image property can then safely use.
+         */
+        :root {
+            --waveform-url: url('{{ url_for("static", filename="Audio Wave.gif") }}');
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e293b;
+            color: #f0f9ff;
+            text-align: center;
+            margin: 0;
+            padding-top: 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        h1 {
+            color: #a5f3fc;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #cbd5e1;
+            margin-bottom: 20px;
+        }
+        button {
+            font-size: 1.1em;
+            padding: 12px 25px;
+            margin: 10px;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            background-color: #3b82f6;
+            color: #f0f9ff;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #2563eb;
+        }
+        #status-container {
+            margin-top: 30px;
+            font-size: 1.2em;
+            color: #a5f3fc;
+            font-weight: bold;
+        }
+        #waveform-animation {
+            width: 80%;
+            max-width: 600px;
+            height: 80px;
+            /* Use the CSS variable here */
+            background-image: var(--waveform-url);
+            background-repeat: repeat-x;
+            background-size: contain;
+            margin: 20px auto;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .talking {
+            opacity: 1 !important;
+        }
     </style>
 </head>
 <body>
-    <h1>Emotion Bot</h1>
-    <p>Use the buttons below to control the bot.</p>
+    <h1>Nila - Your Voice Assistant</h1>
+    <p>Interact with Nila using the buttons below.</p>
     <button id="startBtn">Start Listening</button>
     <button id="stopBtn">Stop Listening</button>
-    <div id="status">Status: Idle</div>
+    <div id="status-container">Status: <span id="status">Idle</span></div>
+    
+    <div id="waveform-animation"></div>
 
     <script>
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
         const statusElement = document.getElementById('status');
-        
-        document.getElementById('startBtn').addEventListener('click', () => {
+        const waveformAnimation = document.getElementById('waveform-animation');
+
+        startBtn.addEventListener('click', () => {
             fetch('/start_bot', { method: 'POST' })
                 .then(response => response.json())
                 .then(data => {
-                    statusElement.textContent = `Status: ${data.status}`;
+                    statusElement.textContent = data.status;
+                    if (data.status === "Bot started") {
+                        waveformAnimation.classList.add('talking');
+                    }
                 })
                 .catch(error => console.error('Error:', error));
         });
 
-        document.getElementById('stopBtn').addEventListener('click', () => {
+        stopBtn.addEventListener('click', () => {
             fetch('/stop_bot', { method: 'POST' })
                 .then(response => response.json())
                 .then(data => {
-                    statusElement.textContent = `Status: ${data.status}`;
+                    statusElement.textContent = data.status;
+                    waveformAnimation.classList.remove('talking');
                 })
                 .catch(error => console.error('Error:', error));
         });
     </script>
 </body>
-</html>```
+</html>
