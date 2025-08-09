@@ -1,14 +1,17 @@
+# working_pipeline.py
 import speech_recognition as sr
 import os
 from openai import OpenAI
 from datetime import datetime
 from elevenlabs.client import ElevenLabs
-import subprocess
+import threading
+import json
+import pygame
 import time
 import firebase_admin
 from firebase_admin import credentials, firestore
-import threading
 import re
+import tempfile
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -16,6 +19,7 @@ load_dotenv()
 # --- Global Status Variable ---
 current_status = "Idle"
 
+# --- API Keys and Configuration ---
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "YOUR_ELEVENLABS_API_KEY")
 WAKE_WORD = os.environ.get("WAKE_WORD", "hello nila")
@@ -31,6 +35,7 @@ if not OPENAI_KEY or OPENAI_KEY == "YOUR_OPENAI_API_KEY":
 if not ELEVENLABS_API_KEY or ELEVENLABS_API_KEY == "YOUR_ELEVENLABS_API_KEY":
     raise ValueError("ELEVENLABS_API_KEY environment variable not set or is a placeholder.")
 
+# --- Firebase Initialization ---
 try:
     cred = credentials.Certificate(SERVICE_ACCOUNT_KEY_FILE)
     firebase_admin.initialize_app(cred)
@@ -40,16 +45,20 @@ except Exception as e:
     print(f"Error initializing Firebase: {e}")
     db = None
 
+# --- API Clients ---
 openai_client = OpenAI(api_key=OPENAI_KEY)
 elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
+# --- System Rules for GPT-4o ---
 system_rules = """
 You are a conversational agent speaking in Tamil. Your persona is a friend who is emotionally aware and gives life advice.
 
 You are equipped with a long-term memory system. I will provide you with relevant information from the user's past conversations under the tag <memories>. Use this information to create a more personalized and coherent response.
 If there are no memories, just respond normally.
 
-Here are the rules for your responses:
+You must respond with a JSON object containing two keys: "response" and "facts_to_store".
+
+The "response" key should contain the conversational text you will say to the user.
 - Your responses must be in simple, everyday, and conversational Tamil. Avoid complex, formal, or literary vocabulary.
 - Respond in 1-3 sentences.
 - Respond with emotions like sadness, happiness, anger, loneliness, etc., as appropriate.
@@ -57,6 +66,15 @@ Here are the rules for your responses:
 - Your answers should relate to real-life feelings and situations.
 - If the user wants to end the conversation by saying words like "bye," "see you," "அப்புறம் பாக்கலாம்," or "போய்ட்டு வரேன்," you should give a brief, kind farewell and then end your response with the special token [END_CONVERSATION].
 - Try to use the user's name where appropriate, but if you don't know it, just use "நண்பா" (friend).
+
+The "facts_to_store" key should be a list of strings, where each string is a key personal fact, detail, or story extracted from the user's latest message. If there are no facts to extract, the list should be empty.
+
+Example of a full response:
+{
+  "response": "நண்பா, நீ இந்த மாதிரி உணர்ந்தா கவலைப்படாம இருக்கலாம். [END_CONVERSATION]",
+  "facts_to_store": ["User's name is Arun.", "User works as a software developer."]
+}
+
 """
 
 def set_status(status_text):
@@ -79,92 +97,86 @@ def transcribe_with_whisper(audio_data):
                 response_format="text",
                 timeout=15
             )
+        os.remove(temp_audio_file)
         return response.strip()
     except Exception as e:
         print(f"Error during Whisper transcription: {e}")
         return ""
 
-def generate_response_with_gpt(messages_list):
-    """Generates a conversational response using GPT-4o with a full message history."""
+def generate_and_parse_gpt_response(messages_list):
+    """Generates a conversational response and memories using GPT-4o with a full message history and parses the JSON output."""
     set_status("Nila is processing...")
-    print("🧠 Generating response with GPT-4o...")
+    print("🧠 Generating structured response with GPT-4o...")
     try:
         chat_response = openai_client.chat.completions.create(
             model=GPT_MODEL,
             messages=messages_list,
             temperature=0.7,
+            response_format={"type": "json_object"},
         )
-        return chat_response.choices[0].message.content.strip()
+        gpt_json = chat_response.choices[0].message.content.strip()
+        return json.loads(gpt_json)
     except Exception as e:
-        print(f"Error generating GPT response: {e}")
-        return "மன்னிக்கவும், ஒரு பிழை ஏற்பட்டது. மீண்டும் முயற்சிக்கவும்."
+        print(f"Error generating or parsing GPT response: {e}")
+        return {"response": "மன்னிக்கவும், ஒரு பிழை ஏற்பட்டது. மீண்டும் முயற்சிக்கவும்.", "facts_to_store": []}
 
-def synthesize_speech_elevenlabs(text, output_path="elevenlabs_response.mp3"):
+def synthesize_speech_elevenlabs(text):
     """Synthesizes text to speech using ElevenLabs and plays it."""
     set_status("Nila is speaking...")
     print("🔊 Converting response to audio using ElevenLabs...")
     try:
-        audio_generator = elevenlabs_client.text_to_speech.convert(
+        audio = elevenlabs_client.text_to_speech.convert(
             text=text,
             voice_id=ELEVENLABS_VOICE_ID,
             model_id=ELEVENLABS_MODEL_ID,
             output_format="mp3_44100_128",
         )
-        with open(output_path, "wb") as f:
-            for chunk in audio_generator:
-                f.write(chunk)
-        print(f"✅ Audio saved as: {output_path}")
-        print("▶️ Playing audio on laptop speakers...")
-        ffplay_path = r"C:\ffmpeg\ffmpeg-7.1.1-essentials_build\bin\ffplay.exe"
-        subprocess.run([ffplay_path, "-autoexit", output_path])
-        print("Playback completed.")
-        return output_path
+        
+        # Use a temporary file that is automatically managed by the OS
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio_file:
+            for chunk in audio:
+                temp_audio_file.write(chunk)
+            temp_filename = temp_audio_file.name
+        
+        print("▶️ Playing audio...")
+        pygame.mixer.music.load(temp_filename)
+        pygame.mixer.music.play()
+        
+        # Wait for playback to finish
+        while pygame.mixer.music.get_busy():
+            time.sleep(0.1)
+        
+        # Now it's safe to remove the file
+        os.remove(temp_filename)
+        print("Playback completed and file removed.")
+        return True
     except Exception as e:
         print(f"Error during ElevenLabs TTS synthesis or playback: {e}")
-        return None
+        return False
     finally:
         set_status("User can speak...")
 
-def extract_and_store_memories(latest_message, db):
+def store_memories_thread(facts_to_store, db):
+    """Stores a list of facts in the database in a background thread."""
     if not db:
         return
-    
-    # --- UPDATED PROMPT FOR BETTER EXTRACTION ---
-    extraction_prompt = f"""
-    You are a memory extraction bot. Your job is to extract key personal facts, details, and stories from the following user message. Respond with a simple, concise list of facts. Each fact should be a single line.
-    
-    Example:
-    User message: "My name is Arun and I work as a software developer. My favorite food is dosa."
-    Extraction:
-    - User's name is Arun.
-    - User works as a software developer.
-    - User's favorite food is dosa.
-    
-    If the user message does not contain any personal facts, respond with the exact phrase "NO_FACTS".
-    User message: "{latest_message}"
-    Extraction:
-    """
-    
+    if not facts_to_store:
+        print("➡️ No new facts to store.")
+        return
     try:
-        extraction_response = openai_client.chat.completions.create(
-            model=GPT_MODEL,
-            messages=[{"role": "user", "content": extraction_prompt}],
-            temperature=0.3,
-        )
-        extracted_memories = extraction_response.choices[0].message.content.strip()
-        if extracted_memories and extracted_memories != "NO_FACTS":
-            memories_ref = db.collection('memories')
+        memories_ref = db.collection('memories')
+        for fact in facts_to_store:
             memories_ref.add({
                 'timestamp': datetime.now(),
-                'fact': extracted_memories
+                'fact': fact
             })
-            print(f"✅ Stored new memory snippets.")
-        else:
-            print("➡️ No new facts to store.")
+        print(f"✅ Stored {len(facts_to_store)} new memory snippets.")
     except Exception as e:
-        print(f"Error extracting or storing memories in background: {e}")
+        print(f"Error storing memories in background: {e}")
+
 
 def retrieve_memories(db):
+    """Retrieves the most recent memories from the database."""
     if not db:
         return ""
     try:
@@ -183,13 +195,15 @@ def start_conversation(recognizer, source):
     """Handles the actual conversation after the wake word is detected."""
     short_term_history = []
     
-    initial_gpt_response = generate_response_with_gpt([
+    # Send an initial message to get the ball rolling
+    initial_gpt_response = generate_and_parse_gpt_response([
         {"role": "system", "content": system_rules},
-        {"role": "user", "content": "hello nila"}
+        {"role": "user", "content": WAKE_WORD}
     ])
     
-    print(f"\n🤖 Agent's Response: {initial_gpt_response}")
-    synthesize_speech_elevenlabs(initial_gpt_response)
+    initial_response_text = initial_gpt_response.get("response", "வணக்கம் நண்பா. எப்படி இருக்கீங்க?")
+    print(f"\n🤖 Agent's Response: {initial_response_text}")
+    synthesize_speech_elevenlabs(initial_response_text)
     
     while True:
         try:
@@ -216,25 +230,27 @@ def start_conversation(recognizer, source):
             api_messages.extend(short_term_history)
             api_messages.append({"role": "user", "content": transcription})
             
-            gpt_response = generate_response_with_gpt(api_messages)
+            gpt_structured_response = generate_and_parse_gpt_response(api_messages)
+            gpt_response_text = gpt_structured_response.get("response", "மன்னிக்கவும், ஒரு பிழை ஏற்பட்டது. மீண்டும் முயற்சிக்கவும்.")
+            facts_to_store = gpt_structured_response.get("facts_to_store", [])
             
-            if db:
-                memory_thread = threading.Thread(target=extract_and_store_memories, args=(transcription, db))
+            if db and facts_to_store:
+                memory_thread = threading.Thread(target=store_memories_thread, args=(facts_to_store, db))
                 memory_thread.start()
 
-            if "[END_CONVERSATION]" in gpt_response:
+            if "[END_CONVERSATION]" in gpt_response_text:
                 print("Goodbye detected. Ending conversation.")
-                final_response = gpt_response.replace("[END_CONVERSATION]", "").strip()
+                final_response = gpt_response_text.replace("[END_CONVERSATION]", "").strip()
                 print(f"\n🤖 Agent's Response: {final_response}")
                 synthesize_speech_elevenlabs(final_response)
                 break
             else:
-                print(f"\n🤖 Agent's Response: {gpt_response}")
+                print(f"\n🤖 Agent's Response: {gpt_response_text}")
                 short_term_history.append({"role": "user", "content": transcription})
-                short_term_history.append({"role": "assistant", "content": gpt_response})
+                short_term_history.append({"role": "assistant", "content": gpt_response_text})
                 if len(short_term_history) > 4:
                     short_term_history = short_term_history[-4:]
-                synthesize_speech_elevenlabs(gpt_response)
+                synthesize_speech_elevenlabs(gpt_response_text)
         
         except sr.WaitTimeoutError:
             print("Timeout: No speech detected for 5 seconds. Conversation ended. Returning to dormant state.")
@@ -247,16 +263,30 @@ def wake_word_detection_loop(stop_event):
     """Main loop to listen for the wake word before starting a conversation."""
     global current_status
     recognizer = sr.Recognizer()
-    MIC_INDEX = 3
     
+    # Initialize Pygame mixer here
+    pygame.mixer.init()
+
+    # Find the microphone index
+    mic_index = 3
+    mic_name = "Microphone (Realtek(R) Audio)" # or another name from sr.Microphone.list_microphone_names()
+    for i, name in enumerate(sr.Microphone.list_microphone_names()):
+        if mic_name in name:
+            mic_index = i
+            break
+    
+    if mic_index is None:
+        print(f"❌ Microphone with name '{mic_name}' not found. Using default microphone.")
+        mic_index = None
+
     WAKE_WORD_TAMIL_1 = "ஹலோ"
     WAKE_WORD_TAMIL_2 = "வணக்கம்"
     WAKE_WORD_STARTS_WITH = "hello"
 
     try:
         set_status("Initializing microphone...")
-        print(f"✅ Attempting to initialize microphone with index {MIC_INDEX}...")
-        with sr.Microphone(device_index=MIC_INDEX) as source:
+        print(f"✅ Attempting to initialize microphone...")
+        with sr.Microphone(device_index=mic_index) as source:
             set_status("Adjusting for ambient noise...")
             print(f"✅ Microphone initialized successfully. Adjusting for ambient noise...")
             recognizer.adjust_for_ambient_noise(source, duration=2)
