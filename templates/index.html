@@ -2,92 +2,223 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nila - Your Voice Assistant</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        :root {
-            --waveform-url: url('{{ url_for("static", filename="Audio Wave.gif") }}');
+        /* Define the custom animations not in default Tailwind */
+        @keyframes pulse-custom { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        .animate-pulse-custom { animation: pulse-custom 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        
+        @keyframes bounce-custom { 0%, 100% { transform: translateY(-25%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); } 50% { transform: translateY(0); animation-timing-function: cubic-bezier(0, 0, 0.2, 1); } }
+        .animate-bounce-custom { animation: bounce-custom 1s infinite; }
+        
+        @keyframes spin-custom { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-spin-custom { animation: spin-custom 1s linear infinite; }
+        
+        /* The custom waveform animation bars */
+        .waveform-bar {
+            background-color: #f97316; /* orange-500 */
+            border-radius: 9999px; /* full rounded */
+            animation: pulse-waveform 0.6s ease-in-out infinite;
         }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #1e293b;
-            color: #f0f9ff;
-            text-align: center;
-            margin: 0;
-            padding-top: 60px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-        }
-        h1 {
-            color: #a5f3fc;
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
-        p {
-            color: #cbd5e1;
-            margin-bottom: 20px;
-        }
-        button {
-            font-size: 1.1em;
-            padding: 12px 25px;
-            margin: 10px;
-            cursor: pointer;
-            border: none;
-            border-radius: 8px;
-            background-color: #3b82f6;
-            color: #f0f9ff;
-            transition: background-color 0.3s ease;
-        }
-        button:hover {
-            background-color: #2563eb;
-        }
-        #status-container {
-            margin-top: 30px;
-            font-size: 1.2em;
-            color: #a5f3fc;
-            font-weight: bold;
-        }
-        #waveform-animation {
-            width: 80%;
-            max-width: 600px;
-            height: 80px;
-            background-image: var(--waveform-url);
-            background-repeat: repeat-x;
-            background-size: contain;
-            margin: 20px auto;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        .talking {
-            opacity: 1 !important;
+        @keyframes pulse-waveform {
+            0%, 100% { transform: scaleY(1); }
+            50% { transform: scaleY(0.5); }
         }
     </style>
+    <!-- Lucide icons via a CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest"></script>
 </head>
-<body>
-    <h1>Nila - Your Voice Assistant</h1>
-    <p>Interact with Nila using the buttons below.</p>
-    <button id="startBtn">Start Listening</button>
-    <button id="stopBtn">Stop Listening</button>
-    <div id="status-container">Status: <span id="status">Idle</span></div>
-    
-    <div id="waveform-animation"></div>
+<body class="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+    <div class="w-full max-w-md mx-auto bg-gray-800 shadow-2xl border border-gray-700 rounded-lg overflow-hidden">
+        <!-- Header -->
+        <div class="bg-gray-900 border-b border-gray-700 p-6 text-center">
+            <div class="flex items-center justify-center mb-2">
+                <!-- Zap Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap w-6 h-6 text-orange-500 mr-2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                <h1 class="text-2xl font-bold text-orange-500 font-mono tracking-wider">NILA</h1>
+            </div>
+            <p class="text-gray-400 text-sm font-mono">VOICE ASSISTANT v2.1</p>
+            <div class="mt-2 text-xs text-gray-500 font-mono">
+                STATUS: <span class="text-green-400">OPERATIONAL</span>
+            </div>
+        </div>
 
+        <!-- Main Content -->
+        <div class="p-6 space-y-6">
+            <!-- Status Display -->
+            <div class="text-center space-y-4">
+                <div id="status-icon-container" class="inline-flex items-center justify-center w-20 h-20 rounded-lg border-2 animate-pulse-custom">
+                    <!-- Dynamic icon will be injected here by JS -->
+                </div>
+                <div class="space-y-2">
+                    <h2 id="status-text" class="text-lg font-bold font-mono tracking-wider text-gray-400">
+                        STANDBY
+                    </h2>
+                    <p id="status-subtext" class="text-sm text-gray-400 font-mono">Press START to activate</p>
+                </div>
+            </div>
+
+            <!-- Waveform Animation - Only visible when speaking -->
+            <div id="waveform-animation" class="hidden flex items-center justify-center space-x-1 h-16 bg-gray-900/50 rounded-lg p-4">
+                <div class="w-1 waveform-bar" style="height: 40px; animation-delay: 0s;"></div>
+                <div class="w-1 waveform-bar" style="height: 30px; animation-delay: 0.1s;"></div>
+                <div class="w-1 waveform-bar" style="height: 50px; animation-delay: 0.2s;"></div>
+                <div class="w-1 waveform-bar" style="height: 20px; animation-delay: 0.3s;"></div>
+                <div class="w-1 waveform-bar" style="height: 60px; animation-delay: 0.4s;"></div>
+                <div class="w-1 waveform-bar" style="height: 35px; animation-delay: 0.5s;"></div>
+                <div class="w-1 waveform-bar" style="height: 45px; animation-delay: 0.6s;"></div>
+            </div>
+
+            <!-- Control Buttons -->
+            <div id="control-buttons" class="space-y-3">
+                <!-- Start Button with Aligned Icon and Text -->
+                <button id="startBtn" class="w-full h-12 bg-orange-600 hover:bg-orange-500 text-white rounded-lg font-mono font-bold tracking-wider transition-all duration-200 transform hover:scale-105 border border-orange-500 relative flex items-center justify-center">
+                    <!-- Icon is positioned absolutely on the left -->
+                    <div class="absolute inset-y-0 left-4 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mic w-5 h-5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                    </div>
+                    <!-- Text is centered within the button -->
+                    START LISTENING
+                </button>
+                <!-- Stop Button with Aligned Icon and Text -->
+                <button id="stopBtn" class="hidden w-full h-12 bg-red-600 hover:bg-red-500 text-white rounded-lg font-mono font-bold tracking-wider transition-all duration-200 transform hover:scale-105 border border-red-500 relative flex items-center justify-center">
+                    <!-- Icon is positioned absolutely on the left -->
+                    <div class="absolute inset-y-0 left-4 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mic-off w-5 h-5"><line x1="2" x2="22" y1="2" y2="22"/><path d="M10 9v3a2 2 0 0 0 3.44 1.66A2 2 0 0 0 16 12V6"/><path d="M6 9v4a6 6 0 0 0 9.39 5.86"/><line x1="12" x2="12" y1="19" y2="22"/><line x1="19.07" x2="19.07" y1="4" y2="4"/></svg>
+                    </div>
+                    <!-- Text is centered within the button -->
+                    STOP LISTENING
+                </button>
+            </div>
+
+            <!-- System Info -->
+            <div class="bg-gray-900/50 rounded-lg p-4 space-y-2">
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-gray-500">CONNECTION:</span>
+                    <span class="text-green-400">SECURE</span>
+                </div>
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-gray-500">LATENCY:</span>
+                    <span class="text-orange-400">12ms</span>
+                </div>
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-gray-500">AUDIO QUALITY:</span>
+                    <span class="text-green-400">HIGH</span>
+                </div>
+            </div>
+
+            <!-- Helper Text -->
+            <div class="text-center">
+                <p class="text-xs text-gray-500 font-mono">OPTIMAL PERFORMANCE IN QUIET ENVIRONMENT</p>
+            </div>
+        </div>
+    </div>
     <script>
+        const statusElement = document.getElementById('status');
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
-        const statusElement = document.getElementById('status');
+        const statusIconContainer = document.getElementById('status-icon-container');
+        const statusTextElement = document.getElementById('status-text');
+        const statusSubtextElement = document.getElementById('status-subtext');
         const waveformAnimation = document.getElementById('waveform-animation');
 
         let statusPollingInterval;
 
-        function updateStatusDisplay(status) {
-            statusElement.textContent = status;
-            if (status.includes("is speaking")) {
-                waveformAnimation.classList.add('talking');
+        // Define icons as SVG strings
+        const icons = {
+            idle: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon w-8 h-8 text-gray-400"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`,
+            listening: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mic w-8 h-8 text-orange-400"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>`,
+            processing: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-brain w-8 h-8 text-orange-300"><path d="M12 5a3 3 0 1 0-3 3"/><path d="M12 5a3 3 0 1 1 3 3"/><path d="M12 5a3 3 0 1 0 3 3"/><path d="M12 5a3 3 0 1 1-3 3"/><path d="M18 13a6 6 0 1 0-12 0v1a6 6 0 0 0 12 0Z"/><path d="M10 13a6 6 0 1 0 0 1v1a6 6 0 0 0 0 1"/><path d="M10 13v-1"/><path d="M10 12h1a3 3 0 0 1 3 3v1"/><path d="M14 13a6 6 0 1 0 0 1v1a6 6 0 0 0 0 1"/><path d="M14 13v-1"/><path d="M14 12h-1a3 3 0 0 1-3-3v-1"/></svg>`,
+            speaking: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-volume-2 w-8 h-8 text-orange-500"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`
+        };
+
+        const statusConfigurations = {
+            "Idle": {
+                text: "STANDBY",
+                subtext: "Press START to activate",
+                icon: icons.idle,
+                bgColor: "bg-gray-800/50",
+                borderColor: "border-gray-600",
+                animation: "animate-pulse-custom"
+            },
+            "Bot started": {
+                text: "INITIALIZING",
+                subtext: "Connecting to the assistant...",
+                icon: icons.idle,
+                bgColor: "bg-gray-800/50",
+                borderColor: "border-gray-600",
+                animation: "animate-pulse-custom"
+            },
+            "Dormant, listening for 'hello nila'...": {
+                text: "READY",
+                subtext: "Waiting for wake word...",
+                icon: icons.idle,
+                bgColor: "bg-gray-800/50",
+                borderColor: "border-gray-600",
+                animation: "animate-pulse-custom"
+            },
+            "User can speak...": {
+                text: "LISTENING",
+                subtext: "Speak your command now",
+                icon: icons.listening,
+                bgColor: "bg-orange-500/20",
+                borderColor: "border-orange-500",
+                animation: "animate-bounce-custom"
+            },
+            "Nila is processing...": {
+                text: "PROCESSING",
+                subtext: "Analyzing your request",
+                icon: icons.processing,
+                bgColor: "bg-orange-600/20",
+                borderColor: "border-orange-400",
+                animation: "animate-spin-custom"
+            },
+            "Nila is speaking...": {
+                text: "RESPONDING",
+                subtext: "Nila is speaking",
+                icon: icons.speaking,
+                bgColor: "bg-orange-500/30",
+                borderColor: "border-orange-500",
+                animation: "animate-pulse-custom"
+            },
+            "Bot stopping": {
+                text: "STOPPING",
+                subtext: "Shutting down bot...",
+                icon: icons.idle,
+                bgColor: "bg-gray-800/50",
+                borderColor: "border-gray-600",
+                animation: "animate-pulse-custom"
+            }
+        };
+
+        function updateUI(status) {
+            const config = statusConfigurations[status] || statusConfigurations["Idle"];
+            
+            // Update status text
+            statusTextElement.textContent = config.text;
+            statusSubtextElement.textContent = config.subtext;
+
+            // Clear and set icon and animations
+            statusIconContainer.innerHTML = config.icon;
+            statusIconContainer.className = `inline-flex items-center justify-center w-20 h-20 rounded-lg border-2 ${config.bgColor} ${config.borderColor} ${config.animation}`;
+
+            // Show/hide waveform
+            if (status.includes("speaking...")) {
+                waveformAnimation.classList.remove('hidden');
             } else {
-                waveformAnimation.classList.remove('talking');
+                waveformAnimation.classList.add('hidden');
+            }
+
+            // Show/hide buttons
+            if (status.includes("Dormant") || status.includes("Idle")) {
+                startBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+            } else {
+                startBtn.classList.add('hidden');
+                stopBtn.classList.remove('hidden');
             }
         }
 
@@ -99,7 +230,7 @@
                 fetch('/get_status')
                     .then(response => response.json())
                     .then(data => {
-                        updateStatusDisplay(data.status);
+                        updateUI(data.status);
                     })
                     .catch(error => console.error('Error fetching status:', error));
             }, 1000); // Poll every 1 second
@@ -108,13 +239,13 @@
         function stopStatusPolling() {
             clearInterval(statusPollingInterval);
             statusPollingInterval = null;
-            updateStatusDisplay("Idle");
+            updateUI("Idle");
         }
 
         startBtn.addEventListener('click', () => {
             fetch('/start_bot', { method: 'POST' })
                 .then(response => response.json())
-                .then(data => {
+                .then(() => {
                     startStatusPolling();
                 })
                 .catch(error => console.error('Error starting bot:', error));
@@ -123,14 +254,17 @@
         stopBtn.addEventListener('click', () => {
             fetch('/stop_bot', { method: 'POST' })
                 .then(response => response.json())
-                .then(data => {
+                .then(() => {
                     stopStatusPolling();
                 })
                 .catch(error => console.error('Error stopping bot:', error));
         });
-        
-        // Initial status update
-        updateStatusDisplay("Idle");
+
+        // Initial UI setup on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Start polling the status immediately
+            startStatusPolling();
+        });
     </script>
 </body>
 </html>

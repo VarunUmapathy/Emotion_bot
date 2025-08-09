@@ -128,12 +128,23 @@ def synthesize_speech_elevenlabs(text, output_path="elevenlabs_response.mp3"):
 def extract_and_store_memories(latest_message, db):
     if not db:
         return
+    
+    # --- UPDATED PROMPT FOR BETTER EXTRACTION ---
     extraction_prompt = f"""
-    You are a memory extraction bot. Your job is to extract key facts, personal details, and stories from the following user message. Respond with a simple list of facts.
-    If the user message does not contain any personal facts, details, or stories, respond with the exact phrase "NO_FACTS".
+    You are a memory extraction bot. Your job is to extract key personal facts, details, and stories from the following user message. Respond with a simple, concise list of facts. Each fact should be a single line.
+    
+    Example:
+    User message: "My name is Arun and I work as a software developer. My favorite food is dosa."
+    Extraction:
+    - User's name is Arun.
+    - User works as a software developer.
+    - User's favorite food is dosa.
+    
+    If the user message does not contain any personal facts, respond with the exact phrase "NO_FACTS".
     User message: "{latest_message}"
     Extraction:
     """
+    
     try:
         extraction_response = openai_client.chat.completions.create(
             model=GPT_MODEL,
