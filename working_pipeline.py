@@ -181,7 +181,7 @@ def retrieve_memories(db):
         return ""
     try:
         memories_ref = db.collection('memories')
-        memories_docs = memories_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(5).get()
+        memories_docs = memories_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(10).get()
         memories_string = ""
         if memories_docs:
             for doc in memories_docs:
@@ -268,7 +268,7 @@ def wake_word_detection_loop(stop_event):
     pygame.mixer.init()
 
     # Find the microphone index
-    mic_index = 3
+    mic_index = 2
     mic_name = "Microphone (Realtek(R) Audio)" # or another name from sr.Microphone.list_microphone_names()
     for i, name in enumerate(sr.Microphone.list_microphone_names()):
         if mic_name in name:
