@@ -283,6 +283,7 @@ def wake_word_detection_loop(stop_event):
     WAKE_WORD_TAMIL_2 = "வணக்கம்"
     WAKE_WORD_STARTS_WITH = "hello"
 
+
     try:
         set_status("Initializing microphone...")
         print(f"✅ Attempting to initialize microphone...")
