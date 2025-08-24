@@ -12,6 +12,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import re
 import tempfile
+from llama_cpp import Llama
 
 from dotenv import load_dotenv
 load_dotenv()
