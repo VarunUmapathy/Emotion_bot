@@ -1,4 +1,5 @@
 .env
 serviceAccountKey.json
 Phi-3-mini-4k-instruct-q4_k_m.gguf
+tamil-llama-7b-v0.1-q4_k_m.gguf
 /pycache/
