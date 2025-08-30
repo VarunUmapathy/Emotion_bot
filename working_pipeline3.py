@@ -39,7 +39,6 @@ if not os.path.exists(LOCAL_LLM_MODEL):
 
 # --- MongoDB Initialization ---
 try:
-    # Update these values to match your MongoDB configuration
     MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
     DATABASE_NAME = "nila_memory_db"
     
@@ -54,7 +53,7 @@ except Exception as e:
 openai_client = OpenAI(api_key=OPENAI_KEY)
 elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
-# --- System Rules ---
+# --- System Rules for Local LLM ---
 system_rules_response = """You are a conversational agent speaking in Tamil. Your persona is a friend who is emotionally aware and gives life advice.
 - Your responses must be in simple, everyday, and conversational Tamil. Avoid complex, formal, or literary vocabulary.
 - Respond in 1-3 sentences.
@@ -171,6 +170,7 @@ def synthesize_speech_elevenlabs(text):
             for chunk in audio:
                 temp_audio_file.write(chunk)
             temp_filename = temp_audio_file.name
+
         print("▶️ Playing audio...")
         pygame.mixer.music.load(temp_filename)
         pygame.mixer.music.play()
@@ -186,34 +186,33 @@ def synthesize_speech_elevenlabs(text):
         set_status("User can speak...")
 
 def store_memories_thread(facts_to_store, db):
-    if not db:
-        return
-    if not facts_to_store:
-        print("➡️ No new facts to store.")
-        return
-    try:
-        for fact in facts_to_store:
-            db.insert_one({
-                'timestamp': datetime.now(),
-                'fact': fact
-            })
-        print(f"✅ Stored {len(facts_to_store)} new memory snippets.")
-    except Exception as e:
-        print(f"Error storing memories in background: {e}")
+    if db is not None:
+        if not facts_to_store:
+            print("➡️ No new facts to store.")
+            return
+        try:
+            for fact in facts_to_store:
+                db.insert_one({
+                    'timestamp': datetime.now(),
+                    'fact': fact
+                })
+            print(f"✅ Stored {len(facts_to_store)} new memory snippets.")
+        except Exception as e:
+            print(f"Error storing memories in background: {e}")
 
 def retrieve_memories(db):
-    if not db:
-        return ""
-    try:
-        memories_docs = db.find().sort("timestamp", -1).limit(10)
-        memories_string = ""
-        if memories_docs:
-            for doc in memories_docs:
-                memories_string += "- " + doc['fact'] + "\n"
-        return memories_string
-    except Exception as e:
-        print(f"Error retrieving memories: {e}")
-        return ""
+    if db is not None:
+        try:
+            memories_docs = db.find().sort("timestamp", -1).limit(10)
+            memories_string = ""
+            if memories_docs:
+                for doc in memories_docs:
+                    memories_string += "- " + doc['fact'] + "\n"
+            return memories_string
+        except Exception as e:
+            print(f"Error retrieving memories: {e}")
+            return ""
+    return ""
 
 def start_conversation(recognizer, source):
     short_term_history = []
@@ -236,7 +235,7 @@ def start_conversation(recognizer, source):
             local_llm_structured_response = get_llm_response_and_facts_multi_step(transcription, short_term_history, user_memories)
             gpt_response_text = local_llm_structured_response.get("response", "மன்னிக்கவும், ஒரு பிழை ஏற்பட்டது. மீண்டும் முயற்சிக்கவும்.")
             facts_to_store = local_llm_structured_response.get("facts_to_store", [])
-            if db and facts_to_store:
+            if db is not None and facts_to_store:
                 memory_thread = threading.Thread(target=store_memories_thread, args=(facts_to_store, db))
                 memory_thread.start()
             if "[END_CONVERSATION]" in gpt_response_text:
