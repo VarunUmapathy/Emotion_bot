@@ -8,11 +8,10 @@ import threading
 import json
 import pygame
 import time
-import firebase_admin
-from firebase_admin import credentials, firestore
 import re
 import tempfile
 from llama_cpp import Llama
+from pymongo import MongoClient   # ✅ MongoDB driver
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -29,21 +28,22 @@ WHISPER_MODEL = "whisper-1"
 GPT_MODEL = "gpt-4o"
 ELEVENLABS_VOICE_ID = "C2RGMrNBTZaNfddRPeRH"
 ELEVENLABS_MODEL_ID = "eleven_multilingual_v2"
-SERVICE_ACCOUNT_KEY_FILE = "serviceAccountKey.json"
 
 if not OPENAI_KEY or OPENAI_KEY == "YOUR_OPENAI_API_KEY":
     raise ValueError("OPENAI_API_KEY environment variable not set or is a placeholder.")
 if not ELEVENLABS_API_KEY or ELEVENLABS_API_KEY == "YOUR_ELEVENLABS_API_KEY":
     raise ValueError("ELEVENLABS_API_KEY environment variable not set or is a placeholder.")
 
-# --- Firebase Initialization ---
+# --- MongoDB Initialization ---
 try:
-    cred = credentials.Certificate(SERVICE_ACCOUNT_KEY_FILE)
-    firebase_admin.initialize_app(cred)
-    db = firestore.client()
-    print("✅ Firebase initialized successfully.")
+    MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
+    MONGO_DB_NAME = os.environ.get("MONGO_DB_NAME", "nila_memory_db")
+
+    mongo_client = MongoClient(MONGO_URI)
+    db = mongo_client[MONGO_DB_NAME]   # your DB: nila_memory_db
+    print("✅ MongoDB initialized successfully.")
 except Exception as e:
-    print(f"Error initializing Firebase: {e}")
+    print(f"Error initializing MongoDB: {e}")
     db = None
 
 # --- API Clients ---
@@ -75,7 +75,6 @@ Example of a full response:
   "response": "நண்பா, நீ இந்த மாதிரி உணர்ந்தா கவலைப்படாம இருக்கலாம். [END_CONVERSATION]",
   "facts_to_store": ["User's name is Arun.", "User works as a software developer."]
 }
-
 """
 
 def set_status(status_text):
@@ -133,7 +132,6 @@ def synthesize_speech_elevenlabs(text):
             output_format="mp3_44100_128",
         )
         
-        # Use a temporary file that is automatically managed by the OS
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio_file:
             for chunk in audio:
                 temp_audio_file.write(chunk)
@@ -143,11 +141,9 @@ def synthesize_speech_elevenlabs(text):
         pygame.mixer.music.load(temp_filename)
         pygame.mixer.music.play()
         
-        # Wait for playback to finish
         while pygame.mixer.music.get_busy():
             time.sleep(0.1)
         
-        # Now it's safe to remove the file
         os.remove(temp_filename)
         print("Playback completed and file removed.")
         return True
@@ -158,35 +154,28 @@ def synthesize_speech_elevenlabs(text):
         set_status("User can speak...")
 
 def store_memories_thread(facts_to_store, db):
-    """Stores a list of facts in the database in a background thread."""
-    if not db:
+    """Stores a list of facts in MongoDB in a background thread."""
+    if db is None:
         return
     if not facts_to_store:
         print("➡️ No new facts to store.")
         return
     try:
-        memories_ref = db.collection('memories')
-        for fact in facts_to_store:
-            memories_ref.add({
-                'timestamp': datetime.now(),
-                'fact': fact
-            })
+        memories_collection = db["memories"]
+        docs = [{"timestamp": datetime.now(), "fact": fact} for fact in facts_to_store]
+        memories_collection.insert_many(docs)
         print(f"✅ Stored {len(facts_to_store)} new memory snippets.")
     except Exception as e:
         print(f"Error storing memories in background: {e}")
 
-
 def retrieve_memories(db):
-    """Retrieves the most recent memories from the database."""
-    if not db:
+    """Retrieves the most recent memories from MongoDB."""
+    if db is None:
         return ""
     try:
-        memories_ref = db.collection('memories')
-        memories_docs = memories_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(10).get()
-        memories_string = ""
-        if memories_docs:
-            for doc in memories_docs:
-                memories_string += "- " + doc.to_dict()['fact'] + "\n"
+        memories_collection = db["memories"]
+        docs = memories_collection.find().sort("timestamp", -1).limit(10)
+        memories_string = "".join([f"- {doc['fact']}\n" for doc in docs])
         return memories_string
     except Exception as e:
         print(f"Error retrieving memories: {e}")
@@ -196,7 +185,6 @@ def start_conversation(recognizer, source):
     """Handles the actual conversation after the wake word is detected."""
     short_term_history = []
     
-    # Send an initial message to get the ball rolling
     initial_gpt_response = generate_and_parse_gpt_response([
         {"role": "system", "content": system_rules},
         {"role": "user", "content": WAKE_WORD}
@@ -235,7 +223,7 @@ def start_conversation(recognizer, source):
             gpt_response_text = gpt_structured_response.get("response", "மன்னிக்கவும், ஒரு பிழை ஏற்பட்டது. மீண்டும் முயற்சிக்கவும்.")
             facts_to_store = gpt_structured_response.get("facts_to_store", [])
             
-            if db and facts_to_store:
+            if db is not None and facts_to_store:
                 memory_thread = threading.Thread(target=store_memories_thread, args=(facts_to_store, db))
                 memory_thread.start()
 
@@ -265,12 +253,10 @@ def wake_word_detection_loop(stop_event):
     global current_status
     recognizer = sr.Recognizer()
     
-    # Initialize Pygame mixer here
     pygame.mixer.init()
 
-    # Find the microphone index
     mic_index = 3
-    mic_name = "Microphone (Realtek(R) Audio)" # or another name from sr.Microphone.list_microphone_names()
+    mic_name = "Microphone (Realtek(R) Audio)" 
     for i, name in enumerate(sr.Microphone.list_microphone_names()):
         if mic_name in name:
             mic_index = i
@@ -283,7 +269,6 @@ def wake_word_detection_loop(stop_event):
     WAKE_WORD_TAMIL_1 = "ஹலோ"
     WAKE_WORD_TAMIL_2 = "வணக்கம்"
     WAKE_WORD_STARTS_WITH = "hello"
-
 
     try:
         set_status("Initializing microphone...")
