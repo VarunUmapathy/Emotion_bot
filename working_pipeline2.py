@@ -36,7 +36,7 @@ if not ELEVENLABS_API_KEY or ELEVENLABS_API_KEY == "YOUR_ELEVENLABS_API_KEY":
 
 # --- MongoDB Initialization ---
 try:
-    MONGO_URI = os.envir on.get("MONGO_URI", "mongodb://localhost:27017/")
+    MONGO_URI = os.environment.get("MONGO_URI", "mongodb://localhost:27017/")
     DATABASE_NAME = "nila_memory_db"
     
     mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
